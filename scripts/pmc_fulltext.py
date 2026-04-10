@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PubMed Central (PMC) 和 Elsevier ScienceDirect 全文获取工具
+PubMed Central (PMC) 全文获取工具
 自动识别并下载开放获取文献的全文
 """
 
@@ -13,28 +13,14 @@ import os
 from typing import Dict, Optional
 from xml.etree import ElementTree as ET
 
-try:
-    import requests
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
-
 NCBI_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 PMC_BASE_URL = "https://www.ncbi.nlm.nih.gov/pmc/articles"
-ELSEVIER_API_URL = "https://api.elsevier.com/content/article"
 TOOL_NAME = "medlit-research"
 EMAIL = os.environ.get("NCBI_EMAIL", "caoyirong@gmail.com")
 
 
-def get_elsevier_api_key() -> Optional[str]:
-    """获取 Elsevier API Key"""
-    return os.environ.get("EMBASE_API_KEY") or os.environ.get("ELSEVIER_API_KEY")
-
-
 def check_article_availability(pmid: str) -> Dict:
-    """
-    检查文献的可获取性（包括PMC和Elsevier）
-    """
+    """检查文献的 PMC 可获取性"""
     # 首先检查PMC
     elink_params = {
         "dbfrom": "pubmed",
@@ -73,51 +59,11 @@ def check_article_availability(pmid: str) -> Dict:
                 "source": "PMC",
                 "doi": None
             }
-        
-        # PMC没有，检查是否有DOI可以通过Elsevier获取
-        # 获取文章摘要信息
-        esummary_params = {
-            "db": "pubmed",
-            "id": pmid,
-            "retmode": "json",
-            "tool": TOOL_NAME,
-            "email": EMAIL
-        }
-        
-        esummary_url = f"{NCBI_BASE_URL}/esummary.fcgi"
-        data = urllib.parse.urlencode(esummary_params).encode('utf-8')
-        with urllib.request.urlopen(esummary_url, data=data, timeout=30) as response:
-            summary = json.loads(response.read().decode('utf-8'))
-        
-        article = summary.get("result", {}).get(pmid, {})
-        doi = article.get("elocationid", "")
-        if doi.startswith("doi:"):
-            doi = doi[4:].strip()
-        
-        journal = article.get("fulljournalname", "")
-        
-        # 检查是否是Elsevier期刊
-        elsevier_journals = ["cell", "lancet", "gastroenterology", "cancer research", 
-                            "surgery", "annals of oncology", "journal of hepatology",
-                            "cell reports", "eclinicalmedicine", "thelancet"]
-        
-        is_elsevier = any(ej.lower() in journal.lower() for ej in elsevier_journals)
-        
-        if doi and is_elsevier and get_elsevier_api_key():
-            return {
-                "pmid": pmid,
-                "pmcid": None,
-                "doi": doi,
-                "availability": "elsevier_api",
-                "full_text_url": f"{ELSEVIER_API_URL}/doi/{doi}",
-                "source": "Elsevier",
-                "journal": journal
-            }
-        
+
+        # PMC 不可用，返回仅摘要状态
         return {
             "pmid": pmid,
             "pmcid": None,
-            "doi": doi,
             "availability": "abstract_only",
             "full_text_url": None,
             "source": None
@@ -131,60 +77,6 @@ def check_article_availability(pmid: str) -> Dict:
             "full_text_url": None,
             "error": str(e)
         }
-
-
-def fetch_elsevier_fulltext(doi: str) -> Dict:
-    """
-    通过 Elsevier ScienceDirect API 获取全文
-    """
-    api_key = get_elsevier_api_key()
-    if not api_key:
-        return {"error": "Elsevier API Key not configured"}
-    
-    headers = {
-        "X-ELS-APIKey": api_key,
-        "Accept": "application/json",
-        "User-Agent": "medlit-research/1.0"
-    }
-    
-    try:
-        url = f"{ELSEVIER_API_URL}/doi/{doi}"
-        
-        if HAS_REQUESTS:
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-        else:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-        
-        # 解析返回的数据
-        ft_response = data.get("full-text-retrieval-response", {})
-        
-        # 提取基本信息
-        coredata = ft_response.get("coredata", {})
-        title = coredata.get("dc:title", "N/A")
-        abstract = coredata.get("dc:description", "N/A")
-        
-        # 提取正文内容
-        original_text = ft_response.get("originalText", "")
-        
-        # 解析章节（如果可能）
-        sections = {}
-        
-        return {
-            "doi": doi,
-            "title": title,
-            "abstract": abstract,
-            "full_text": original_text[:50000],
-            "sections": sections,
-            "word_count": len(original_text.split()),
-            "source": "Elsevier ScienceDirect"
-        }
-        
-    except Exception as e:
-        return {"doi": doi, "error": f"Failed to fetch from Elsevier: {str(e)}"}
 
 
 def fetch_pmc_fulltext(pmcid: str) -> Dict:
@@ -335,35 +227,22 @@ def main():
         fulltext_data = fetch_pmc_fulltext(pmcid)
         source = "PMC"
         
-    elif article_id.startswith("10."):
-        # DOI，尝试Elsevier
-        if not get_elsevier_api_key():
-            print(json.dumps({"error": "Elsevier API Key not configured"}, indent=2))
-            sys.exit(1)
-        fulltext_data = fetch_elsevier_fulltext(article_id)
-        source = "Elsevier"
-        
     else:
-        # 假设是PMID，检查可用性
+        # 假设是 PMID，检查可用性
         pmid = article_id
         availability = check_article_availability(pmid)
-        
+
         if availability.get("availability") == "pmc_free":
             pmcid = availability["pmcid"]
             time.sleep(0.34)
             fulltext_data = fetch_pmc_fulltext(pmcid)
             source = "PMC"
-            
-        elif availability.get("availability") == "elsevier_api":
-            doi = availability["doi"]
-            fulltext_data = fetch_elsevier_fulltext(doi)
-            source = "Elsevier"
-            
+
         else:
             print(json.dumps({
                 "pmid": pmid,
                 "status": "not_available",
-                "message": "Full text not available",
+                "message": "Full text not available via PMC",
                 "availability": availability
             }, indent=2, ensure_ascii=False))
             sys.exit(0)
