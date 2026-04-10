@@ -15,6 +15,29 @@ description: 医学文献检索、批判性评价与综合分析。支持PubMed/
 4. **AI辅助分析** - 自动提取PICO、生成摘要、评价研究质量
 5. **多维度分析** - 从摘要到全文的多层次质量评估
 
+## 快速开始
+
+```bash
+# 1. 安装依赖
+export NCBI_EMAIL="your_email@example.com"  # 必填，遵守 NCBI 使用条款
+
+# 2. 检索文献
+python3 scripts/multi_database_search.py "intestinal fibrosis" --dbs pubmed --max 20 --date 2022:2025
+
+# 3. 获取全文
+python3 scripts/pmc_fulltext.py PMC1234567 > paper.txt
+
+# 4. AI 分析（需要 mmx CLI 已登录）
+python3 scripts/ai_assistant.py paper.txt all
+
+# 5. 质量评价
+python3 scripts/fulltext_appraisal.py RCT
+```
+
+> **前提**: mmx CLI 已安装并登录 (`mmx auth login`)。AI 分析通过 MiniMax M2.7 模型工作。
+
+---
+
 ## 使用场景
 
 ### 场景1: 多数据库联合检索
@@ -208,11 +231,6 @@ python3 scripts/ai_assistant.py paper.txt all > analysis.json
 AI分析作为初筛和辅助，最终临床决策仍需专业人员结合全文和临床经验判断。
 
 ## 批判性评价工具
-
-### 基础评价 (basic_appraisal.py)
-- 快速评价清单
-- 适用于摘要水平的初步筛选
-- 按研究类型定制
 
 ### 全文深度评价 (fulltext_appraisal.py)
 - 基于完整论文的深度评价
