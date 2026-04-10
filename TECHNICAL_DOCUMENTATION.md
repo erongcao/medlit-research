@@ -1,8 +1,8 @@
 # Medlit-Research Skill 技术档案
 
 **创建日期**: 2025年3月17日  
-**最后更新**: 2025年3月17日  
-**版本**: v2.0 (改进版)
+**最后更新**: 2026年4月10日  
+**版本**: v2.2
 
 ---
 
@@ -25,7 +25,7 @@ Medlit-Research 是一个多数据库医学文献检索工具，支持 PubMed、
 | 数据库 | 状态 | 说明 |
 |-------|------|------|
 | PubMed | ✅ 可用 | 通过 NCBI E-utilities API |
-| Embase | ✅ 可用 | 通过 Elsevier Scopus API |
+| Embase | ✅ 可用 | 通过 Embase API (api.embase.com) |
 | Cochrane | ⚠️ 手动 | 需手动访问或机构订阅 |
 
 ### 2.2 改进功能清单
@@ -180,8 +180,8 @@ python3 multi_database_search.py --export b42a5295 md refs.md
 - 未配置邮箱时会显示警告，但仍可使用默认邮箱运行
 
 ### 4.3 Embase API 限制
-- 通过 Scopus API 访问 Embase
-- 需要有效的 Elsevier API Key
+- 通过 Embase API (api.embase.com/v2/search) 访问
+- 需要有效的 Embase API Key
 - 有速率限制（建议每秒不超过3次请求）
 
 ### 4.4 Cochrane Library
@@ -218,6 +218,12 @@ python3 multi_database_search.py --config email your_email@example.com
 
 ## 6. 更新日志
 
+### v2.2 (2026-04-10)
+- ✅ Embase 检索改为正确的 Embase API 端点
+- ✅ AI 分析集成 mmx (MiniMax)
+- ✅ 删除重复/废弃脚本
+- ✅ TECHNICAL_DOCUMENTATION.md 与代码同步
+
 ### v2.0 (2025-03-17)
 - ✅ 新增配置文件管理（API Key 和邮箱）
 - ✅ 改进 Embase 作者提取（支持多位作者）
@@ -226,12 +232,6 @@ python3 multi_database_search.py --config email your_email@example.com
 - ✅ 新增结果导出功能（CSV/BibTeX/RIS/JSON/Markdown）
 - ✅ 新增检索历史记录
 
-### v1.0 (原始版本)
-- PubMed 检索
-- Embase 检索（通过 Scopus API）
-- Cochrane Library URL 生成
-- 基础批判性评价
-
 ---
 
 ## 7. 相关文件
@@ -239,10 +239,9 @@ python3 multi_database_search.py --config email your_email@example.com
 | 文件 | 路径 | 说明 |
 |-----|------|------|
 | 主脚本 | `scripts/multi_database_search.py` | 多数据库检索主程序 |
-| PubMed 脚本 | `scripts/pubmed_search.py` | PubMed 单独检索 |
-| 批判性评价 | `scripts/critical_appraisal.py` | 生成评价清单 |
 | 全文获取 | `scripts/pmc_fulltext.py` | PMC 全文下载 |
-| AI 分析 | `scripts/ai_assistant.py` | AI 辅助分析 |
+| 全文评价 | `scripts/fulltext_appraisal.py` | 评价清单模板生成 |
+| AI 分析 | `scripts/ai_assistant.py` | AI 辅助分析（mmx/MiniMax） |
 | SKILL 文档 | `SKILL.md` | 完整使用文档 |
 | 配置文件 | `~/.medlit/config.json` | API Key 和邮箱 |
 | 检索历史 | `~/.medlit/search_history.json` | 检索记录 |
