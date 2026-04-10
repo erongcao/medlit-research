@@ -23,7 +23,7 @@ NCBI_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 PMC_BASE_URL = "https://www.ncbi.nlm.nih.gov/pmc/articles"
 ELSEVIER_API_URL = "https://api.elsevier.com/content/article"
 TOOL_NAME = "medlit-research"
-EMAIL = "user@example.com"
+EMAIL = os.environ.get("NCBI_EMAIL", "caoyirong@gmail.com")
 
 
 def get_elsevier_api_key() -> Optional[str]:

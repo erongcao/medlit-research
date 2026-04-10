@@ -587,13 +587,14 @@ class DatabaseSearcher:
     def search_embase(self, query: str, max_results: int = 20,
                       date_range: Optional[str] = None) -> Dict:
         """
-        Embase检索（改进版：完整作者提取、详细错误处理）
+        Embase 检索（通过 Embase API）
+        文档: https://dev.elsevier.com/guides/EmbaseAPI.htm
         """
         api_key = ConfigManager.get_api_key("embase")
-        
+
         if not api_key:
             return {
-                "database": "Embase (via Scopus)",
+                "database": "Embase",
                 "query": query,
                 "status": "error",
                 "error": {
@@ -602,28 +603,26 @@ class DatabaseSearcher:
                     "suggestion": "请设置环境变量: export EMBASE_API_KEY='your_key' 或使用 --config embase your_key"
                 }
             }
-        
-        scopus_query = f"TITLE-ABS-KEY({query})"
-        
+
+        embase_base_url = "https://api.embase.com"
         headers = {
-            "X-ELS-APIKey": api_key,
-            "Accept": "application/json",
-            "User-Agent": "medlit-research/1.0"
+            "api-key": api_key,
+            "Accept": "application/json"
         }
-        
+
         params = {
-            "query": scopus_query,
-            "count": max_results,
-            "start": 0
+            "q": query,
+            "size": max_results,
+            "page": 1
         }
-        
+
         if date_range:
             params["date"] = date_range.replace(":", "-")
-        
+
         try:
             if HAS_REQUESTS:
                 response = requests.get(
-                    "https://api.elsevier.com/content/search/scopus",
+                    f"{embase_base_url}/v2/search",
                     headers=headers,
                     params=params,
                     timeout=30
@@ -631,68 +630,69 @@ class DatabaseSearcher:
                 response.raise_for_status()
                 data = response.json()
             else:
-                scopus_url = "https://api.elsevier.com/content/search/scopus"
-                url = f"{scopus_url}?{urllib.parse.urlencode(params)}"
+                url = f"{embase_base_url}/v2/search?{urllib.parse.urlencode(params)}"
                 req = urllib.request.Request(url, headers=headers)
-                
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
-            
-            entries = data.get("search-results", {}).get("entry", [])
-            total = data.get("search-results", {}).get("opensearch:totalResults", 0)
-            
+
+            # 解析 Embase API 响应: { total, hits: [{_source}], page }
+            hits = data.get("hits", {})
+            total = data.get("total", 0)
+            entries = hits.get("hits", []) if isinstance(hits, dict) else []
+
             results = []
-            for entry in entries:
-                # 改进：完整提取所有作者
-                authors = []
-                
-                # 尝试多种方式获取作者
-                # 1. 尝试获取 authors 字段
-                author_data = entry.get("authors", {})
-                if isinstance(author_data, dict):
-                    author_list = author_data.get("author", [])
-                    if isinstance(author_list, dict):
-                        author_list = [author_list]
-                    for author in author_list[:5]:  # 限制前5位作者
-                        if isinstance(author, dict):
-                            # 尝试不同的作者名字段
-                            name = (author.get("authname") or 
-                                   author.get("$") or 
-                                   author.get("given-name", "") + " " + author.get("surname", ""))
-                            if name.strip():
-                                authors.append(name.strip())
-                
-                # 2. 如果没有获取到作者，尝试 dc:creator
-                if not authors:
-                    creator = entry.get("dc:creator", "")
-                    if creator:
-                        authors = [creator]
-                
-                # 3. 尝试 author-count 和 author-url（需要额外请求，这里简化）
-                
+            for hit in entries:
+                source = hit.get("_source", hit)
+
+                # 提取作者（前5位）
+                authors_raw = source.get("authors", [])
+                if isinstance(authors_raw, list):
+                    authors = []
+                    for a in authors_raw[:5]:
+                        if isinstance(a, dict):
+                            name = (a.get("givenName", "") + " " + a.get("lastName", "")).strip()
+                            if name:
+                                authors.append(name)
+                        else:
+                            authors.append(str(a))
+                else:
+                    authors = ["N/A"]
+
+                # 期刊名
+                journal_info = source.get("source", {})
+                journal_name = journal_info.get("name", "N/A") if isinstance(journal_info, dict) else str(journal_info)
+
+                # DOI
+                doi = ""
+                for ident in source.get("identifiers", []):
+                    if isinstance(ident, dict) and ident.get("type") == "doi":
+                        doi = ident.get("value", "")
+                        break
+
                 results.append({
-                    "title": entry.get("dc:title", "N/A"),
+                    "title": source.get("title", "N/A"),
                     "authors": authors if authors else ["N/A"],
-                    "journal": entry.get("prism:publicationName", "N/A"),
-                    "pubdate": entry.get("prism:coverDate", "N/A"),
-                    "doi": entry.get("prism:doi", ""),
-                    "url": entry.get("link", [{}])[0].get("@href", "") if isinstance(entry.get("link", []), list) else "",
-                    "database": "Embase (via Scopus)"
+                    "journal": journal_name,
+                    "pubdate": source.get("publicationDate", "N/A"),
+                    "doi": doi,
+                    "embase_id": source.get("embaseId", "") or hit.get("_id", ""),
+                    "url": f"https://www.embase.com/search/results?embaseId={source.get('embaseId', '')}",
+                    "database": "Embase"
                 })
-            
+
             return {
-                "database": "Embase (via Scopus)",
+                "database": "Embase",
                 "query": query,
                 "total_count": int(total),
                 "returned_count": len(results),
                 "results": results,
                 "status": "success"
             }
-            
+
         except Exception as e:
             error_info = ErrorHandler.classify_error(e, "Embase")
             return {
-                "database": "Embase (via Scopus)",
+                "database": "Embase",
                 "query": query,
                 "status": "error",
                 "error": error_info
